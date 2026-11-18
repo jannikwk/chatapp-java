@@ -1,58 +1,50 @@
 # Chat Program (Java)
-> Simpelt konsol-baseret chatprogram, hvor flere klienter kan kommunikere med hinanden via en server.
+> A simple console-based chat program where multiple clients communicate with each other through a server.
 
+## Tests
+| Test                                 | Expected result                                   |
+|--------------------------------------|---------------------------------------------------|
+| Three clients connect simultaneously | All three clients can connect.                    |
+| Two users select the same username   | The second user receives an error message.        |
+| A user sends a message in a room     | Only users in that room receive the message.      |
+| A user sends a private message       | Only the specified recipient can see the message. |
+| A client sends a malformed message   | The server sends an error and continues running.  |
+| A client disconnects unexpectedly    | The server removes the client from the registry.  |
+| A user joins a room                  | The user can see the room history.                |
 
- 
-## AI
-| Opgave                 | AI-værktøj      | AI’s forslag                                                                                        | Jeres vurdering og ændringer                                                                          | Kontrol og test                                                                                                                                                           |
-|------------------------|-----------------|-----------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Issue 15 serverlistner | GitHub Copilot | AI forslog en fin plan                                                                              | Vi vuderet at planen var fin                                                                          | Test var ude mærket. Men da vi kiget i koden var den kommet til at lave en metode i både handleren og i servereen som vi retted og fik en forklaring på, at det var en fejl |
-| Mange issues           | GitHub Copilot | AI forsolg en plan som så ude mærket ud men den hadet ikke kigget i de klasser som den skulle bruge | Vi fortalte AI, at den skulle kigge i klaserne for at komme op med en plan som omhandlet vores program | Vi nåret ikke til denne del                                                                                                                                               |
-| Udvidelsen             | GitHub Copilot | mangle criditter gjor at vi bruge min ai's plan og bruge den anden ai til at lave planen            | Det gik ude mærket og vi fik en implematation, som vi kunne bruge til at lave vores udvidelse         | Vi testet implementiaionen og det virket                                                                                                                                 |
+## Startup guide & Protocol description
+### Instructions for starting the program 
 
-## Test
-| Test                                      | Forventet resultat                                 |
-|-------------------------------------------|----------------------------------------------------|
-| Tre klienter forbindes samtidig           | Alle 3 klienter kan forbinde                       |
-| To brugere vælger samme brugernavn        | Den anden bruger for en fejlbesked                 |
-| En bruger sender en besked i et rum       | Kun brugere i det pågældende rum modtager beskeden |
-| En bruger sender en privat besked         | Kun den pågældene bruger kan se denne bessked      |
-| En klient sender en fejlformateret besked | Serveren sender en fejl og fortsætter med at køre  |
-| En klient lukker uventet                  | Serveren fjerner klienten fra samlingen            |
-| Bruger joiner et rum                      | Brugern kan se hisorikken fra det rum              |
+1. Run the server's main method.
+2. If the port is in use, change the constant named `PORT` in both the server and the client.
+3. Run the client's main method.
 
-## Vejledning & protokolbeskrivelse
-| Vejledning til start af program                                                                                              |
-|------------------------------------------------------------------------------------------------------------------------------|
-| 1. Kør serverens main-metode                                                                                                 |
-| 2. Hvis porten er i brug skal du  gå in og finde konstanten ved navnet PORT for at ændre naven gør det for serveren og clienten |
-| 3. Kør klientens main-metode                                                                                                            |
+### Protocol description
+- Our protocol is implemented by `MessageParser`.
+- It converts raw text into fields that the program uses to determine what action should occur.
+- The server sends messages using `TIMESTAMP|TYPE|SENDER|TARGET|PAYLOAD`, for example `TIMESTAMP|PRIVATE|FRANK|BOB|hello bob`.
+- The protocol has two main formats: clients use `TYPE|TARGET|PAYLOAD`, while servers use `TIMESTAMP|TYPE|SENDER|TARGET|PAYLOAD`.
+- Server action logs use the same server format but contain a generic action as the payload. They do not expose the actual chat message.
 
-| Beskrivelse af protokollen                                                                                                                        |
-|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| Vores protokol heder MessageParsner                                                                                                               |
-| Den tager det rå test og om danner det til felter som kan bliver brugt af programmet til at vide hvor ting sker                                   |
-| Den forteller hvilken type modtager og din tekst og setter dem ind i felter fx PRIVATE bob hej med dig bob                                        |
-| Den forteller også hvad der sker inde i serveren når den snakker med clienten TIMESTAMP SENDER her sender den din besked til bob  fx TIMESTAMP PRIVATE FRANK BOB hej med dig bob |
-| Den består primært af 2 scenarier: Klienten bruger et beskedformatet `TYPE \| TARGET \| PAYLOAD` og serveren bruger `TIMESTAMP \| TYPE \| SENDER \| TARGET \| PAYLOAD`|
+#### Server-logging
+![Example of server logging](src/main/resources/images/img.png)
 
+This is an example of how the server logs a user's actions using the server protocol.
 
+## Thread model and shared resources
+The application uses multithreading, allowing it to handle several tasks simultaneously instead of waiting for one task to finish before starting another.
+An `ExecutorService` limits the number of client handler threads.
 
-## Trådmodellen & delte ressourcer
-Trådmodell vi bruger den hedder mulitthredding. Den er med til at gøre, at vores program kan køre flere ting på engang, frem for at programmet skal vente på at blive ferdig med en ting.
-Dertil, Exceute bliver brugt til at fortelle, at der kun må være et antal af tråde
+## Selected extension
+`Chat room message history`
 
-## Valgte udvidelse
-`Lagring og Visning af beskedhistorik (Chatrum)`
+We selected message history because it improves the chat experience by letting users see previous activity after joining a room.
+Users can view the history when joining a room or by using the history command.
+The server verifies that the user is a member of the room and handles an empty room history correctly.
+Private messages are not included because the extension is limited to room history.
 
-Vi har valgt at gå med den der hedder historic fordi vi mener det giver best mening for vores program at starte med, at man også kan se historikken i de rum man joiner og det giver også en bedre oplevelse.
-Det vi har udvidet er, at man kan se hvad der er forgået in i et rum når man joiner det er også muligt at bruge komanodoen histork for at gør det samme.
-Vi har valideret så en skal være joinet, det rum som han vil se historikken fra og der ikke sker noget hvis rummet er tomt.
-Det vi ikke har gjort er, at man ikke kan gør det for private chat da det ikke giver mening, at man kan se hvad der er forgået i en privat chat
+### Class diagram
+![Class diagram](src/main/resources/uml/class-diagram.drawio.png)
 
-
-### Klassediagram
-![Klassediagram](src/main/resources/urml/Chatprogram-Diagrammer-Klassediagram.drawio.png)
-
-### Sekvensdiagram
-![Sekvensdiagram](src/main/resources/urml/Chatprogram-Diagrammer-Sekvensdiagrammer.jpg)
+### Sequence diagram
+![Sequence diagram](src/main/resources/uml/sequence-diagram.drawio.jpg)
