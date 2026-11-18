@@ -35,13 +35,13 @@ public class ChatServer {
             while (!serverSocket.isClosed()) {
                 try {
                     Socket clientSocket = serverSocket.accept();
-                    System.out.println("New client connected: " + clientSocket.getRemoteSocketAddress());
+                    System.out.println("[Server] New client connected: " + clientSocket.getRemoteSocketAddress());
 
                     try {
                         ChatClientHandler clientHandler = new ChatClientHandler(clientSocket, chatRoomManager);
                         executorService.execute(clientHandler);
                     } catch (IOException e) {
-                        System.out.println("Failed to initialize handlers: " + e.getMessage());
+                        System.out.println("[Server] Failed to initialize handlers: " + e.getMessage());
                         try { clientSocket.close(); } catch (IOException ignored) {}
                     }
                 } catch (IOException e) {

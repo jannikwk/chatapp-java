@@ -2,17 +2,17 @@ package org.example.server;
 
 import org.example.protocol.Message;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class ChatRoomManager {
-    private final Map<String, Set<String>> rooms = new HashMap<>();
-    private final Map<String, List<Message>> roomHistory = new HashMap<>();
+    private static final int MAX_HISTORY_MESSAGES = 1000;
+    private final Map<String, Set<String>> rooms = new ConcurrentHashMap<>();
+    private final Map<String, List<Message>> roomHistory = new ConcurrentHashMap<>();
 
     public boolean joinRoom(String roomName, String username) {
         String normalizedRoomName = normalizeRoomName(roomName);
@@ -21,7 +21,7 @@ public class ChatRoomManager {
             return false;
         }
 
-        rooms.putIfAbsent(normalizedRoomName, new HashSet<>());
+        rooms.putIfAbsent(normalizedRoomName, ConcurrentHashMap.newKeySet());
         return rooms.get(normalizedRoomName).add(normalizedUsername);
     }
 
@@ -65,7 +65,12 @@ public class ChatRoomManager {
             return false;
         }
 
-        roomHistory.computeIfAbsent(normalizedRoomName, key -> new ArrayList<>()).add(roomMessage);
+        List<Message> history =
+                roomHistory.computeIfAbsent(normalizedRoomName, key -> new CopyOnWriteArrayList<>());
+        if (history.size() >= MAX_HISTORY_MESSAGES) {
+            history.remove(0);
+        }
+        history.add(roomMessage);
         return true;
     }
 
@@ -84,7 +89,7 @@ public class ChatRoomManager {
         }
 
         boolean removed = false;
-        for (Map.Entry<String, Set<String>> entry : new HashMap<>(rooms).entrySet()) {
+        for (Map.Entry<String, Set<String>> entry : rooms.entrySet()) {
             Set<String> members = entry.getValue();
             if (members.remove(normalizedUsername)) {
                 removed = true;

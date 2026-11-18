@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ChatClientHandler implements Runnable {
+    private static final int MAX_LINE_LENGTH = 4096;
+    private static final int SOCKET_IDLE_TIMEOUT_MS = 300_000;
     private final Socket clientSocket;
     private final ChatRoomManager chatRoomManager;
     private final PrintWriter out;
@@ -25,6 +27,7 @@ public class ChatClientHandler implements Runnable {
     public ChatClientHandler(Socket clientSocket, ChatRoomManager chatRoomManager) throws IOException {
         this.clientSocket = clientSocket;
         this.chatRoomManager = chatRoomManager;
+        this.clientSocket.setSoTimeout(SOCKET_IDLE_TIMEOUT_MS);
         this.out = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream()), true);
         this.messageParser = new MessageParser();
     }
@@ -37,14 +40,18 @@ public class ChatClientHandler implements Runnable {
                 if (rawClientMessage.isBlank()) {
                     continue;
                 }
-
-                System.out.println("[Client] " + rawClientMessage);
+                if (rawClientMessage.length() > MAX_LINE_LENGTH) {
+                    sendError("Beskeden er for lang", "");
+                    logAction("CLIENT", "Indsendte en for lang besked");
+                    continue;
+                }
 
                 Message clientMessage;
                 try {
                     clientMessage = messageParser.parseClientMessage(rawClientMessage);
                 } catch (IllegalArgumentException e) {
                     sendError("Fejl i beskedformat: " + e.getMessage(), "");
+                    logAction("CLIENT", "Indsendte en ugyldig besked");
                     continue;
                 }
 
@@ -52,17 +59,18 @@ public class ChatClientHandler implements Runnable {
                     handleClientMessage(clientMessage);
                 } catch (Exception e) {
                     sendError("Fejl ved behandling af besked: " + (e.getMessage() == null ? "" : e.getMessage()), "");
+                    logAction("CLIENT", "Forårsagede en behandlingsfejl");
                 }
             }
         } catch (IOException e) {
-            System.out.println("Client handler error: " + e.getMessage());
+            logAction("CLIENT", "Forbindelsen blev afbrudt eller fejlede");
         } finally {
             disconnect();
             ClientRegistry.unregister(this);
             try {
                 clientSocket.close();
             } catch (IOException e) {
-                System.out.println("Client socket close error: " + e.getMessage());
+                logAction("CLIENT", "Socketforbindelsen kunne ikke lukkes");
             }
         }
     }
@@ -80,24 +88,35 @@ public class ChatClientHandler implements Runnable {
             case "TEXT" -> sendTextToRoom(clientMessage.getTarget(), clientMessage.getPayload());
             case "PRIVATE" -> sendPrivateMessage(clientMessage.getTarget(), clientMessage.getPayload());
             case "HISTORY" -> showHistory(clientMessage.getTarget());
-            default -> sendError("Ukendt kommando: " + clientMessage.getType(), clientMessage.getTarget());
+            default -> {
+                sendError("Ukendt kommando: " + clientMessage.getType(), clientMessage.getTarget());
+                logAction(username == null ? "CLIENT" : username, "Submitted an unknown command");
+            }
         }
     }
 
     public void login(String requestedUsername) {
         if (requestedUsername == null || requestedUsername.isBlank()) {
             sendError("Brugernavn mangler", "");
+            logAction("LOGIN", "Mislykket - brugernavn mangler");
             return;
         }
 
         String normalizedUsername = requestedUsername.trim();
+        if (normalizedUsername.length() > 64) {
+            sendError("Brugernavnet er for langt", "");
+            logAction("LOGIN", "Mislykket - brugernavn for langt");
+            return;
+        }
         if (!ClientRegistry.registerUsername(this, normalizedUsername)) {
             sendError("Brugernavnet er allerede i brug", "");
+            logAction("LOGIN", "Mislykket - brugernavn allerede i brug");
             return;
         }
 
         this.username = normalizedUsername;
         sendMessageToClient(new Message(Instant.now(), "OK", "Server", this.username, "Login godkendt"));
+        logAction(normalizedUsername, "Login successful");
     }
 
     private void joinRoom(String roomName) {
@@ -114,16 +133,19 @@ public class ChatClientHandler implements Runnable {
             joinedRooms.add(normalizedRoomName);
             sendMessageToClient(new Message(Instant.now(), "OK", "Server", normalizedRoomName,
                     "Du deltager nu i rummet " + normalizedRoomName));
+            logAction(username, "Joined room " + normalizedRoomName);
             showHistory(normalizedRoomName);
             return;
         }
 
         if (isInRoom(normalizedRoomName)) {
             sendError("Du deltager allerede i rummet", normalizedRoomName);
+            logAction(username, "Attempted to join an already joined room");
             return;
         }
 
         sendError("Kunne ikke tilslutte til rummet", normalizedRoomName);
+        logAction(username, "Failed to join room");
     }
 
     private void leaveRoom(String roomName) {
@@ -140,10 +162,12 @@ public class ChatClientHandler implements Runnable {
             joinedRooms.remove(normalizedRoomName);
             sendMessageToClient(new Message(Instant.now(), "OK", "Server", normalizedRoomName,
                     "Du har forladt rummet " + normalizedRoomName));
+            logAction(username, "Left room " + normalizedRoomName);
             return;
         }
 
         sendError("Du er ikke medlem af rummet", normalizedRoomName);
+        logAction(username, "Attempted to leave a room they are not in");
     }
 
     private void sendTextToRoom(String roomName, String payload) {
@@ -156,14 +180,20 @@ public class ChatClientHandler implements Runnable {
         }
 
         String normalizedRoomName = roomName.trim();
+        if (payload == null || payload.length() > 2048) {
+            sendError("Beskedens indhold er ugyldigt eller for langt", normalizedRoomName);
+            return;
+        }
         if (!chatRoomManager.isUserInRoom(normalizedRoomName, username)) {
             sendError("Du er ikke medlem af rummet", normalizedRoomName);
+            logAction(username, "Attempted to send a message without room membership");
             return;
         }
 
         Message roomMessage = new Message(Instant.now(), "TEXT", username, normalizedRoomName, payload);
         chatRoomManager.addRoomMessage(normalizedRoomName, roomMessage);
         broadcastToRoom(normalizedRoomName, roomMessage);
+        logAction(username, "Sent a message to room " + normalizedRoomName);
     }
 
     private void showHistory(String roomName) {
@@ -178,10 +208,12 @@ public class ChatClientHandler implements Runnable {
 
         if (!chatRoomManager.isUserInRoom(resolvedRoomName, username)) {
             sendError("Du er ikke medlem af rummet", resolvedRoomName);
+            logAction(username, "Attempted to request history without room membership");
             return;
         }
 
         List<Message> history = chatRoomManager.getRoomHistory(resolvedRoomName);
+        logAction(username, "Requested history for room " + resolvedRoomName);
         sendMessageToClient(new Message(Instant.now(), "OK", "Server", resolvedRoomName,
                 "Historik for rummet " + resolvedRoomName + ":"));
 
@@ -226,15 +258,21 @@ public class ChatClientHandler implements Runnable {
         }
 
         String normalizedRecipient = recipientUsername.trim();
+        if (normalizedRecipient.length() > 64 || payload == null || payload.length() > 2048) {
+            sendError("Modtager eller besked er ugyldig", normalizedRecipient);
+            return;
+        }
         ChatClientHandler recipient = ClientRegistry.getClient(normalizedRecipient);
         if (recipient == null) {
             sendError("Brugeren findes ikke", normalizedRecipient);
+            logAction(username, "Attempted to send a private message to an unknown user");
             return;
         }
 
         Message privateMessage = new Message(Instant.now(), "PRIVATE", username, normalizedRecipient, payload);
         recipient.sendMessageToClient(privateMessage);
         sendMessageToClient(new Message(Instant.now(), "OK", "Server", normalizedRecipient, "Besked sendt"));
+        logAction(username, "Sent a private message");
     }
 
     private void broadcastToRoom(String roomName, Message roomMessage) {
@@ -273,12 +311,17 @@ public class ChatClientHandler implements Runnable {
         if (username != null) {
             chatRoomManager.removeUserFromAllRooms(username);
             ClientRegistry.unregister(this);
+            logAction(username, "Disconnected");
         }
+    }
+
+    private void logAction(String actor, String action) {
+        Message actionMessage = new Message(Instant.now(), "Action", "Server", actor, action);
+        System.out.println("[Server] " + messageParser.formatServerMessage(actionMessage));
     }
 
     private void sendMessageToClient(Message message) {
         String formattedMessage = messageParser.formatServerMessage(message);
-        System.out.println("[Server] " + formattedMessage);
         out.println(formattedMessage);
     }
 

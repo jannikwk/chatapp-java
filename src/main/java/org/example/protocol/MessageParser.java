@@ -11,6 +11,9 @@ public class MessageParser {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public Message parseClientMessage(String message) {
+        if (message == null || message.length() > 4096) {
+            throw new IllegalArgumentException("Beskeden er ugyldig eller for lang");
+        }
         String[] fields = message.split("\\|", 3);
         if (fields.length != 3) {
             throw new IllegalArgumentException("Client message must be in format TYPE|TARGET|PAYLOAD");
@@ -29,11 +32,11 @@ public class MessageParser {
             throw new IllegalArgumentException("Server message must be in format TIMESTAMP|TYPE|SENDER|TARGET|PAYLOAD");
         }
 
-        Instant timestamp = parseTimestamp(fields[0]);
-        String type = fields[1];
-        String sender = fields[2];
-        String target = fields[3];
-        String payload = fields[4];
+        Instant timestamp = parseTimestamp(fields[0].trim());
+        String type = fields[1].trim();
+        String sender = fields[2].trim();
+        String target = fields[3].trim();
+        String payload = fields[4].trim();
 
         return new Message(timestamp, type, sender, target, payload);
     }
