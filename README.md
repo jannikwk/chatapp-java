@@ -1,23 +1,16 @@
 # Chat Program (Java)
 > A simple console-based chat program where multiple clients communicate with each other through a server.
 
-## AI
-| Task | AI tool | AI suggestion | Evaluation and changes | Verification and testing |
-|------|----------|---------------|-------------------------|-------------------------|
-| Issue 15 ServerListener | GitHub Copilot | AI suggested a suitable plan. | We considered the plan suitable. | The test was unmarked. While reviewing the code, we discovered that it had created a method in both the handler and the server. We corrected this and received an explanation that it was a mistake. |
-| Multiple issues | GitHub Copilot | AI proposed a plan that looked suitable but had not inspected the classes it needed to use. | We told the AI to inspect the classes before proposing a plan for our program. | We did not complete this part. |
-| Extension | GitHub Copilot | The credit limit prevented us from using the first AI to implement, so we used its plan with another AI to produce the implementation. | The implementation worked and could be used for the extension. | We tested the implementation and it worked. |
-
 ## Tests
-| Test | Expected result |
-|------|-----------------|
-| Three clients connect simultaneously | All three clients can connect. |
-| Two users select the same username | The second user receives an error message. |
-| A user sends a message in a room | Only users in that room receive the message. |
-| A user sends a private message | Only the specified recipient can see the message. |
-| A client sends a malformed message | The server sends an error and continues running. |
-| A client disconnects unexpectedly | The server removes the client from the registry. |
-| A user joins a room | The user can see the room history. |
+| Test                                 | Expected result                                   |
+|--------------------------------------|---------------------------------------------------|
+| Three clients connect simultaneously | All three clients can connect.                    |
+| Two users select the same username   | The second user receives an error message.        |
+| A user sends a message in a room     | Only users in that room receive the message.      |
+| A user sends a private message       | Only the specified recipient can see the message. |
+| A client sends a malformed message   | The server sends an error and continues running.  |
+| A client disconnects unexpectedly    | The server removes the client from the registry.  |
+| A user joins a room                  | The user can see the room history.                |
 
 ## Startup guide & Protocol description
 ### Instructions for starting the program 
