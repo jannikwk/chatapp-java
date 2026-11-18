@@ -16,7 +16,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ChatClientHandler implements Runnable {
     private static final int MAX_LINE_LENGTH = 4096;
+    private static final int MAX_USERNAME_LENGTH = 64;
+    private static final int MAX_MESSAGE_LENGTH = 2048;
     private static final int SOCKET_IDLE_TIMEOUT_MS = 300_000;
+
     private final Socket clientSocket;
     private final ChatRoomManager chatRoomManager;
     private final PrintWriter out;
@@ -96,18 +99,11 @@ public class ChatClientHandler implements Runnable {
     }
 
     public void login(String requestedUsername) {
-        if (requestedUsername == null || requestedUsername.isBlank()) {
-            sendError("Brugernavn mangler", "");
-            logAction("LOGIN", "Mislykket - brugernavn mangler");
+        String normalizedUsername = normalizeUsername(requestedUsername);
+        if (!isValidUsername(normalizedUsername, "LOGIN")) {
             return;
         }
 
-        String normalizedUsername = requestedUsername.trim();
-        if (normalizedUsername.length() > 64) {
-            sendError("Brugernavnet er for langt", "");
-            logAction("LOGIN", "Mislykket - brugernavn for langt");
-            return;
-        }
         if (!ClientRegistry.registerUsername(this, normalizedUsername)) {
             sendError("Brugernavnet er allerede i brug", "");
             logAction("LOGIN", "Mislykket - brugernavn allerede i brug");
@@ -124,11 +120,11 @@ public class ChatClientHandler implements Runnable {
             return;
         }
 
-        if (requireRoomName(roomName)) {
+        String normalizedRoomName = normalizeRoomName(roomName);
+        if (requireRoomName(normalizedRoomName)) {
             return;
         }
 
-        String normalizedRoomName = roomName.trim();
         if (chatRoomManager.joinRoom(normalizedRoomName, username)) {
             joinedRooms.add(normalizedRoomName);
             sendMessageToClient(new Message(Instant.now(), "OK", "Server", normalizedRoomName,
@@ -153,11 +149,11 @@ public class ChatClientHandler implements Runnable {
             return;
         }
 
-        if (requireRoomName(roomName)) {
+        String normalizedRoomName = normalizeRoomName(roomName);
+        if (requireRoomName(normalizedRoomName)) {
             return;
         }
 
-        String normalizedRoomName = roomName.trim();
         if (chatRoomManager.leaveRoom(normalizedRoomName, username)) {
             joinedRooms.remove(normalizedRoomName);
             sendMessageToClient(new Message(Instant.now(), "OK", "Server", normalizedRoomName,
@@ -175,18 +171,16 @@ public class ChatClientHandler implements Runnable {
             return;
         }
 
-        if (requireRoomName(roomName)) {
+        String normalizedRoomName = normalizeRoomName(roomName);
+        if (requireRoomName(normalizedRoomName)) {
             return;
         }
 
-        String normalizedRoomName = roomName.trim();
-        if (payload == null || payload.length() > 2048) {
+        if (payload == null || payload.length() > MAX_MESSAGE_LENGTH) {
             sendError("Beskedens indhold er ugyldigt eller for langt", normalizedRoomName);
             return;
         }
-        if (!chatRoomManager.isUserInRoom(normalizedRoomName, username)) {
-            sendError("Du er ikke medlem af rummet", normalizedRoomName);
-            logAction(username, "Attempted to send a message without room membership");
+        if (!requireRoomMembership(normalizedRoomName, "attempted to send a message")) {
             return;
         }
 
@@ -206,9 +200,7 @@ public class ChatClientHandler implements Runnable {
             return;
         }
 
-        if (!chatRoomManager.isUserInRoom(resolvedRoomName, username)) {
-            sendError("Du er ikke medlem af rummet", resolvedRoomName);
-            logAction(username, "Attempted to request history without room membership");
+        if (!requireRoomMembership(resolvedRoomName, "attempted to request history")) {
             return;
         }
 
@@ -231,7 +223,7 @@ public class ChatClientHandler implements Runnable {
 
     private String resolveHistoryRoomName(String roomName) {
         if (roomName != null && !roomName.isBlank()) {
-            return roomName.trim();
+            return normalizeRoomName(roomName);
         }
 
         if (joinedRooms.isEmpty()) {
@@ -257,8 +249,11 @@ public class ChatClientHandler implements Runnable {
             return;
         }
 
-        String normalizedRecipient = recipientUsername.trim();
-        if (normalizedRecipient.length() > 64 || payload == null || payload.length() > 2048) {
+        String normalizedRecipient = normalizeUsername(recipientUsername);
+        if (normalizedRecipient.isEmpty()
+                || normalizedRecipient.length() > MAX_USERNAME_LENGTH
+                || payload == null
+                || payload.length() > MAX_MESSAGE_LENGTH) {
             sendError("Modtager eller besked er ugyldig", normalizedRecipient);
             return;
         }
@@ -299,12 +294,43 @@ public class ChatClientHandler implements Runnable {
         return false;
     }
 
+    private boolean requireRoomMembership(String roomName, String failedAction) {
+        if (!chatRoomManager.isUserInRoom(roomName, username)) {
+            sendError("Du er ikke medlem af rummet", roomName);
+            logAction(username, failedAction + " without room membership");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isValidUsername(String normalizedUsername, String actor) {
+        if (normalizedUsername.isEmpty()) {
+            sendError("Brugernavn mangler", "");
+            logAction(actor, "Mislykket - brugernavn mangler");
+            return false;
+        }
+        if (normalizedUsername.length() > MAX_USERNAME_LENGTH) {
+            sendError("Brugernavnet er for langt", "");
+            logAction(actor, "Mislykket - brugernavn for langt");
+            return false;
+        }
+        return true;
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? "" : username.trim();
+    }
+
+    private String normalizeRoomName(String roomName) {
+        return roomName == null ? "" : roomName.trim().toLowerCase();
+    }
+
     private void sendError(String errorMessage, String target) {
         sendMessageToClient(new Message(Instant.now(), "ERROR", "Server", target, errorMessage));
     }
 
     private boolean isInRoom(String roomName) {
-        return roomName != null && joinedRooms.contains(roomName.trim());
+        return roomName != null && joinedRooms.contains(normalizeRoomName(roomName));
     }
 
     private void disconnect() {
